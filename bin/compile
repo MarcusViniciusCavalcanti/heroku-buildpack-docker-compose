@@ -1,24 +1,30 @@
 #!/bin/bash
 
-echo "-----> update system"
-apt-get update
+BUILD_DIR=$1
+CACHE_DIR=$2
+ENV_DIR=$3
+VENDOR_DIR=$BUILD_DIR/vendor
 
-echo "-----> install dependencies"
-apt-get install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    software-properties-common
+mkdir -p $CACHE_DIR $VENDOR_DIR
 
-echo "-----> download docker-ce"
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-apt-key fingerprint 0EBFCD88
-add-apt-repository \
-   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-   $(lsb_release -cs) \
-   stable"
+DOCKER_VERSION=`curl -s https://download.docker.com/linux/static/stable/x86_64/ | grep "\-ce" | grep -oP "[0-9]+\.[0-9]+\.[0-9]" | tail -n 1`
+COMPOSE_VERSION=`git ls-remote https://github.com/docker/compose | grep refs/tags | grep -oP "[0-9]+\.[0-9][0-9]+\.[0-9]+$" | tail -n 1`
 
-apt-get update
+LOCAL_DOCKER_TGZ=$CACHE_DIR/docker-$DOCKER_VERSION.tgz
+LOCAL_COMPOSE=$CACHE_DIR/docker-compose-$COMPOSE_VERSION
 
-echo "-----> install docker-ce"
-apt-get install docker-ce
+
+echo "-----> Using docker CLI $DOCKER_VERSION"
+[ -e $LOCAL_DOCKER_TGZ ] || curl -s https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}-ce.tgz -o $LOCAL_DOCKER_TGZ
+
+echo "-----> Using docker-compose $COMPOSE_VERSION"
+[ -e $LOCAL_COMPOSE ] || curl -s -L https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > $LOCAL_COMPOSE
+
+echo "-----> Installing binaries under /app/vendor"
+tar -zxf $LOCAL_DOCKER_TGZ -C $VENDOR_DIR docker/docker
+cp $LOCAL_COMPOSE $VENDOR_DIR/docker/docker-compose
+chmod 755 $VENDOR_DIR/docker/*
+
+echo "-----> Writing .profile.d script"
+mkdir -p $BUILD_DIR/.profile.d
+echo 'export PATH=$PATH:/app/vendor/docker' > $BUILD_DIR/.profile.d/heroku-buildpack-docker-compose.sh
